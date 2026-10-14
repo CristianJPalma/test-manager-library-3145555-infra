@@ -1,0 +1,67 @@
+services:
+  db:
+    image: postgres:16
+    container_name: library-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: library
+      POSTGRES_PASSWORD: library
+      POSTGRES_DB: library
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - library-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U library -d library"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: php:8.3-cli
+    container_name: library-api
+    depends_on:
+      db:
+        condition: service_healthy
+    working_dir: /var/www/api
+    volumes:
+      - ../test-manager-library-3145555-api:/var/www/api
+      - covers:/var/www/api/var/covers
+    environment:
+      DATABASE_URL: postgresql://library:library@db:5432/library
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-env}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me}
+      COVERS_DIR: /var/www/api/var/covers
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+    networks:
+      - library-net
+    command: ["php", "-S", "0.0.0.0:8000", "-t", "public"]
+    ports:
+      - "8000:8000"
+
+  app:
+    image: node:24
+    container_name: library-app
+    depends_on:
+      - api
+    working_dir: /usr/src/app
+    volumes:
+      - ../test-manager-library-3145555-app:/usr/src/app
+    environment:
+      VITE_API_URL: http://localhost:8000/api/v1
+    networks:
+      - library-net
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+    ports:
+      - "5173:5173"
+
+networks:
+  library-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  covers:
